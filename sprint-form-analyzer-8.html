@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Splitline — Sprint Form Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0F1013;
+    --surface:#1A1C21;
+    --surface-2:#22252C;
+    --line:#2E313A;
+    --text:#F3F1EA;
+    --muted:#8B8E98;
+    --accent:#FF4E32;
+    --accent-dim:#7A2A1F;
+    --good:#D4FF3D;
+    --good-dim:#4E5A16;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(ellipse 1200px 600px at 50% -200px, rgba(255,78,50,0.10), transparent),
+      var(--bg);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:920px;margin:0 auto;padding:28px 18px 80px;}
+
+  /* Header */
+  header{margin-bottom:28px;}
+  .eyebrow{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--accent);display:flex;align-items:center;gap:8px;margin-bottom:6px;
+  }
+  .eyebrow::before{content:"";width:7px;height:7px;background:var(--accent);border-radius:50%;box-shadow:0 0 8px var(--accent);}
+  h1{
+    font-family:'Bebas Neue',sans-serif;
+    font-size:52px;letter-spacing:.01em;line-height:.9;margin:0 0 8px;
+  }
+  h1 span{color:var(--accent);}
+  .sub{color:var(--muted);font-size:14.5px;line-height:1.55;max-width:60ch;}
+
+  /* Track rule divider */
+  .lane-rule{
+    height:10px;margin:22px 0;border-radius:6px;
+    background: repeating-linear-gradient(90deg, var(--line) 0 18px, transparent 18px 30px);
+    position:relative;
+  }
+  .lane-rule::before,.lane-rule::after{
+    content:"";position:absolute;top:0;bottom:0;width:3px;background:var(--line);
+  }
+  .lane-rule::before{left:0;} .lane-rule::after{right:0;}
+
+  /* Upload zone */
+  .dropzone{
+    border:2px dashed var(--line);
+    border-radius:16px;
+    background:var(--surface);
+    padding:36px 20px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  .dropzone:hover, .dropzone.drag{
+    border-color:var(--accent);
+    background:linear-gradient(180deg, rgba(255,78,50,0.06), transparent);
+  }
+  .dropzone .bib{
+    font-family:'Bebas Neue',sans-serif;font-size:34px;color:var(--text);letter-spacing:.02em;margin-bottom:6px;
+  }
+  .dropzone p{color:var(--muted);font-size:13.5px;margin:0;}
+  input[type=file]{display:none;}
+
+  /* Stage: video + canvas + controls */
+  .stage{display:none;margin-top:22px;}
+  .stage.active{display:block;}
+  .video-frame{
+    position:relative;background:#000;border-radius:14px;overflow:hidden;
+    border:1px solid var(--line);
+  }
+  video, canvas.overlay{
+    position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;
+  }
+  video{position:relative;display:block;width:100%;}
+  canvas.overlay{pointer-events:none;}
+  .video-frame::after{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,0.04);
+  }
+
+  .controls-row{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;align-items:center;}
+  button{
+    font-family:'Inter',sans-serif;font-weight:700;font-size:13.5px;
+    border:none;border-radius:10px;padding:12px 20px;cursor:pointer;
+    transition:transform .1s, opacity .1s;
+  }
+  button:active{transform:scale(.97);}
+  button.primary{background:var(--accent);color:#160705;}
+  button.primary:disabled{opacity:.4;cursor:not-allowed;}
+  button.ghost{background:var(--surface-2);color:var(--text);border:1px solid var(--line);}
+  button.small{padding:9px 14px;font-size:12.5px;border-radius:8px;}
+  .toggle{
+    display:flex;align-items:center;gap:7px;color:var(--muted);font-size:13px;font-weight:600;margin-left:auto;
+  }
+  .toggle input{accent-color:var(--accent);width:15px;height:15px;}
+
+  /* Trim panel */
+  .trim-panel{
+    background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    padding:14px 16px 16px;margin-top:14px;
+  }
+  .trim-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;gap:10px;flex-wrap:wrap;}
+  .trim-label{
+    font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+  }
+  .trim-range{font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--text);}
+  .trim-range .trim-dur{color:var(--good);margin-left:4px;}
+  .trim-bar{position:relative;height:14px;margin-bottom:12px;}
+  .trim-bar-track{
+    position:absolute;top:5px;left:0;right:0;height:4px;border-radius:3px;background:var(--surface-2);
+  }
+  .trim-bar-selected{
+    position:absolute;top:5px;height:4px;border-radius:3px;background:linear-gradient(90deg,var(--accent),var(--good));
+  }
+  .trim-bar-playhead{
+    position:absolute;top:0;width:2px;height:14px;background:var(--text);border-radius:1px;opacity:.85;
+  }
+  .trim-sliders{display:flex;flex-direction:column;gap:8px;margin-bottom:12px;}
+  .trim-sliders label{
+    display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--muted);
+    font-family:'JetBrains Mono',monospace;letter-spacing:.04em;text-transform:uppercase;
+  }
+  .trim-sliders input[type=range]{
+    flex:1;accent-color:var(--accent);height:4px;
+  }
+  .trim-actions{display:flex;gap:8px;flex-wrap:wrap;}
+
+  /* Phase badge (overlay on video) */
+  .phase-badge{
+    position:absolute; top:10px; left:10px; z-index:5;
+    font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+    padding:6px 10px; border-radius:7px; background:rgba(15,16,19,0.78); border:1px solid var(--line);
+    display:none; pointer-events:none;
+  }
+  .phase-badge.drive{color:var(--accent); border-color:var(--accent-dim);}
+  .phase-badge.stride{color:var(--good); border-color:var(--good-dim);}
+
+  /* Phase timeline (results) */
+  .phase-timeline-box{
+    background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin-bottom:18px;
+  }
+  .phase-bar{position:relative; height:16px; margin-bottom:8px;}
+  .phase-bar-track{position:absolute; top:6px; left:0; right:0; height:4px; border-radius:3px; background:var(--surface-2);}
+  .phase-seg{position:absolute; top:6px; height:4px; border-radius:3px;}
+  .phase-seg.drive{background:var(--accent);}
+  .phase-seg.stride{background:var(--good);}
+  .phase-bar-playhead{position:absolute; top:0; width:2px; height:16px; background:var(--text); border-radius:1px; opacity:.85;}
+  .phase-readout{font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--muted); display:flex; gap:16px; flex-wrap:wrap;}
+  .phase-readout .k-drive{color:var(--accent);}
+  .phase-readout .k-stride{color:var(--good);}
+
+  .phase-panel{margin-bottom:8px;}
+  .phase-panel-title{
+    font-family:'Bebas Neue',sans-serif; font-size:24px; letter-spacing:.02em; margin:0 0 4px;
+    display:flex; align-items:center; gap:9px;
+  }
+  .dot-tag{width:11px;height:11px;border-radius:50%;flex:none;}
+  .dot-tag.drive{background:var(--accent); box-shadow:0 0 7px var(--accent);}
+  .dot-tag.stride{background:var(--good); box-shadow:0 0 7px var(--good);}
+
+  /* Progress */
+  .progress-wrap{margin-top:16px;display:none;}
+  .progress-wrap.active{display:block;}
+  .progress-label{
+    display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;
+    font-size:11.5px;color:var(--muted);margin-bottom:6px;
+  }
+  .progress-track{height:6px;background:var(--surface-2);border-radius:4px;overflow:hidden;}
+  .progress-bar{height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--good));transition:width .15s;}
+
+  /* Results */
+  .results{display:none;margin-top:34px;}
+  .results.active{display:block;}
+  .section-title{
+    font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:.02em;margin:0 0 4px;
+  }
+  .section-note{color:var(--muted);font-size:13px;margin:0 0 16px;}
+
+  .metric-grid{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:26px;
+  }
+  .metric-card{
+    background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 14px 12px;
+    position:relative;overflow:hidden;
+  }
+  .metric-card .tag{
+    font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+  }
+  .metric-card .val{
+    font-family:'Bebas Neue',sans-serif;font-size:36px;line-height:1.1;margin-top:4px;
+  }
+  .metric-card .unit{font-size:14px;color:var(--muted);font-family:'Inter',sans-serif;margin-left:3px;}
+  .metric-card.flag-good{border-color:var(--good-dim);}
+  .metric-card.flag-good .val{color:var(--good);}
+  .metric-card.flag-watch{border-color:var(--accent-dim);}
+  .metric-card.flag-watch .val{color:var(--accent);}
+
+  .feedback-list{list-style:none;margin:0 0 30px;padding:0;display:flex;flex-direction:column;gap:8px;}
+  .feedback-item{
+    display:flex;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:10px;
+    padding:13px 14px;font-size:13.8px;line-height:1.5;
+  }
+  .feedback-item .dot{
+    flex:none;width:9px;height:9px;border-radius:50%;margin-top:5px;
+  }
+  .feedback-item.good .dot{background:var(--good);box-shadow:0 0 6px var(--good);}
+  .feedback-item.watch .dot{background:var(--accent);box-shadow:0 0 6px var(--accent);}
+  .feedback-item b{color:var(--text);}
+  .feedback-item .body{color:#C9CAD1;}
+
+  .chart-box{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:20px;}
+  .chart-box h3{font-family:'Bebas Neue',sans-serif;font-weight:400;font-size:18px;margin:0 0 10px;letter-spacing:.02em;}
+  canvas.chartel{max-height:220px;}
+
+  .disclaimer{
+    font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:16px;margin-top:10px;line-height:1.6;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    * { transition:none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">In-browser · no upload leaves your device</div>
+    <h1>SPLIT<span>LINE</span></h1>
+    <p class="sub">Upload a side-on sprint clip. Splitline tracks your joints frame by frame and reads back your lean, knee drive, arm swing, cadence and stride placement — the same checkpoints a sprints coach eyeballs on the track.</p>
+  </header>
+
+  <div class="lane-rule"></div>
+
+  <div id="dropzone" class="dropzone">
+    <div class="bib">DROP CLIP HERE</div>
+    <p>or tap to choose a video — best results: side view, 3–5 full strides, one runner, decent light</p>
+    <input type="file" id="fileInput" accept="video/*">
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="video-frame">
+      <video id="video" playsinline muted controls></video>
+      <canvas class="overlay" id="overlay"></canvas>
+      <div class="phase-badge" id="phaseBadge"></div>
+    </div>
+
+    <div class="trim-panel" id="trimPanel">
+      <div class="trim-header">
+        <span class="trim-label">Trim clip</span>
+        <span class="trim-range" id="trimRangeLabel">0.00s – 0.00s <span class="trim-dur">(0.00s)</span></span>
+      </div>
+      <div class="trim-bar">
+        <div class="trim-bar-track"></div>
+        <div class="trim-bar-selected" id="trimBarSelected"></div>
+        <div class="trim-bar-playhead" id="trimBarPlayhead"></div>
+      </div>
+      <div class="trim-sliders">
+        <label>Start <input type="range" id="trimStart" min="0" max="1" step="0.01" value="0"></label>
+        <label>End <input type="range" id="trimEnd" min="0" max="1" step="0.01" value="1"></label>
+      </div>
+      <div class="trim-actions">
+        <button class="ghost small" id="setStartBtn">Set start here</button>
+        <button class="ghost small" id="setEndBtn">Set end here</button>
+        <button class="ghost small" id="previewTrimBtn">▶ Preview trim</button>
+        <button class="ghost small" id="resetTrimBtn">Use full clip</button>
+      </div>
+    </div>
+
+    <div class="controls-row">
+      <button class="primary" id="analyzeBtn">Analyze form</button>
+      <button class="ghost" id="resetBtn">Load another clip</button>
+      <label class="toggle"><input type="checkbox" id="skeletonToggle" checked> show skeleton</label>
+    </div>
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-label"><span id="progressLabel">reading frames…</span><span id="progressPct">0%</span></div>
+      <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
+    </div>
+  </div>
+
+  <div class="results" id="results">
+    <div class="lane-rule"></div>
+    <h2 class="section-title">Phase breakdown</h2>
+    <p class="section-note">Split from how your trunk lean decays through the clip — acceleration (drive) vs top-speed (stride) call for different form. Sanity-check the split against the video.</p>
+    <div class="phase-timeline-box">
+      <div class="phase-bar" id="phaseBar">
+        <div class="phase-bar-track"></div>
+        <div class="phase-seg drive" id="phaseSegDrive"></div>
+        <div class="phase-seg stride" id="phaseSegStride"></div>
+        <div class="phase-bar-playhead" id="phaseBarPlayhead"></div>
+      </div>
+      <div class="phase-readout" id="phaseReadout"></div>
+    </div>
+
+    <div class="phase-panel" id="drivePanel">
+      <h3 class="phase-panel-title"><span class="dot-tag drive"></span>Drive phase</h3>
+      <p class="section-note">Acceleration mechanics — more lean, more force, building cadence.</p>
+      <div class="metric-grid" id="driveMetricGrid"></div>
+      <ul class="feedback-list" id="driveFeedbackList"></ul>
+    </div>
+
+    <div class="phase-panel" id="stridePanel">
+      <h3 class="phase-panel-title"><span class="dot-tag stride"></span><span id="stridePanelTitle">Stride / max-velocity phase</span></h3>
+      <p class="section-note" id="stridePanelNote">Top-speed mechanics — tall posture, short ground contact, full cyclical range.</p>
+      <div class="metric-grid" id="strideMetricGrid"></div>
+      <ul class="feedback-list" id="strideFeedbackList"></ul>
+    </div>
+
+    <div class="lane-rule"></div>
+    <h2 class="section-title">Clip trends</h2>
+    <p class="section-note">Whole-clip charts — the phase markers above show where drive hands off to stride.</p>
+    <div class="chart-box">
+      <h3>Trunk lean over the clip</h3>
+      <canvas class="chartel" id="leanChart"></canvas>
+    </div>
+    <div class="chart-box">
+      <h3>Knee angle — both legs</h3>
+      <canvas class="chartel" id="kneeChart"></canvas>
+    </div>
+    <div class="chart-box">
+      <h3>Arm swing angle — front(+) / back(−) of shoulder</h3>
+      <canvas class="chartel" id="armChart"></canvas>
+    </div>
+    <div class="chart-box">
+      <h3>Ground contact vs air time per step</h3>
+      <canvas class="chartel" id="strideChart"></canvas>
+    </div>
+
+    <p class="disclaimer">Splitline estimates joint positions with an on-device pose model (MoveNet) — accuracy depends on video angle, lighting and resolution, and it can lose track on baggy clothing or fast pans. The drive/stride split is inferred from trunk-lean trend, not a true event detector. "Shoulder rotation", "Hip rotation" and "Braking leak" are proxies too — true side-to-side sway can't be seen from a side-on camera at all, so the rotation metrics instead read trunk/pelvis twist via shoulder and hip line width, and braking leak reads the dip in forward hip speed right after each footstrike rather than an actual ground-reaction force. Treat all of this as a directional coaching aid, not a lab-grade biomechanics report.</p>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js"></script>
+
+<script>
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const stage = document.getElementById('stage');
+const video = document.getElementById('video');
+const overlay = document.getElementById('overlay');
+const analyzeBtn = document.getElementById('analyzeBtn');
+const resetBtn = document.getElementById('resetBtn');
+const skeletonToggle = document.getElementById('skeletonToggle');
+const progressWrap = document.getElementById('progressWrap');
+const progressBar = document.getElementById('progressBar');
+const progressPct = document.getElementById('progressPct');
+const progressLabel = document.getElementById('progressLabel');
+const resultsEl = document.getElementById('results');
+const drivePanel = document.getElementById('drivePanel');
+const driveMetricGrid = document.getElementById('driveMetricGrid');
+const driveFeedbackList = document.getElementById('driveFeedbackList');
+const stridePanel = document.getElementById('stridePanel');
+const stridePanelTitle = document.getElementById('stridePanelTitle');
+const stridePanelNote = document.getElementById('stridePanelNote');
+const strideMetricGrid = document.getElementById('strideMetricGrid');
+const strideFeedbackList = document.getElementById('strideFeedbackList');
+const phaseBadge = document.getElementById('phaseBadge');
+const phaseBar = document.getElementById('phaseBar');
+const phaseSegDrive = document.getElementById('phaseSegDrive');
+const phaseSegStride = document.getElementById('phaseSegStride');
+const phaseBarPlayhead = document.getElementById('phaseBarPlayhead');
+const phaseReadout = document.getElementById('phaseReadout');
+const trimPanel = document.getElementById('trimPanel');
+const trimStart = document.getElementById('trimStart');
+const trimEnd = document.getElementById('trimEnd');
+const trimRangeLabel = document.getElementById('trimRangeLabel');
+const trimBarSelected = document.getElementById('trimBarSelected');
+const trimBarPlayhead = document.getElementById('trimBarPlayhead');
+const setStartBtn = document.getElementById('setStartBtn');
+const setEndBtn = document.getElementById('setEndBtn');
+const previewTrimBtn = document.getElementById('previewTrimBtn');
+const resetTrimBtn = document.getElementById('resetTrimBtn');
+
+let detector = null;
+let framesData = []; // {t, kp: {name:{x,y,score}}}
+let leanChartInstance = null, kneeChartInstance = null, armChartInstance = null, strideChartInstance = null;
+let lastAnalysis = null; // { rangeStart, rangeEnd, hasDrive, splitTime }
+
+const EDGES = [
+  ['left_shoulder','right_shoulder'],['left_hip','right_hip'],
+  ['left_shoulder','left_hip'],['right_shoulder','right_hip'],
+  ['left_shoulder','left_elbow'],['left_elbow','left_wrist'],
+  ['right_shoulder','right_elbow'],['right_elbow','right_wrist'],
+  ['left_hip','left_knee'],['left_knee','left_ankle'],
+  ['right_hip','right_knee'],['right_knee','right_ankle'],
+];
+
+dropzone.addEventListener('click', () => fileInput.click());
+['dragover','dragenter'].forEach(ev => dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add('drag'); }));
+['dragleave','drop'].forEach(ev => dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.remove('drag'); }));
+dropzone.addEventListener('drop', e => {
+  const f = e.dataTransfer.files[0];
+  if (f) loadFile(f);
+});
+fileInput.addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (f) loadFile(f);
+});
+
+function loadFile(file){
+  const url = URL.createObjectURL(file);
+  video.src = url;
+  dropzone.style.display = 'none';
+  stage.classList.add('active');
+  resultsEl.classList.remove('active');
+  framesData = [];
+  lastAnalysis = null;
+  phaseBadge.style.display = 'none';
+  video.onloadedmetadata = () => {
+    fitOverlay();
+    initTrim();
+  };
+}
+
+function fitOverlay(){
+  const rect = video.getBoundingClientRect();
+  overlay.width = video.videoWidth;
+  overlay.height = video.videoHeight;
+  overlay.style.width = rect.width + 'px';
+  overlay.style.height = rect.height + 'px';
+}
+window.addEventListener('resize', fitOverlay);
+
+// ---------- trim controls ----------
+let previewWatcher = null;
+
+function fmtT(s){ return (Math.round(s*100)/100).toFixed(2) + 's'; }
+
+function initTrim(){
+  const dur = video.duration || 0;
+  trimStart.min = 0; trimStart.max = dur; trimStart.step = 0.01; trimStart.value = 0;
+  trimEnd.min = 0; trimEnd.max = dur; trimEnd.step = 0.01; trimEnd.value = dur;
+  updateTrimUI();
+}
+
+function updateTrimUI(){
+  const dur = video.duration || 1;
+  let s = parseFloat(trimStart.value), e = parseFloat(trimEnd.value);
+  if (e - s < 0.2){ // keep a minimum 0.2s window, push whichever handle was just moved
+    if (document.activeElement === trimStart) trimStart.value = s = Math.max(0, e - 0.2);
+    else trimEnd.value = e = Math.min(dur, s + 0.2);
+  }
+  trimRangeLabel.innerHTML = `${fmtT(s)} \u2013 ${fmtT(e)} <span class="trim-dur">(${fmtT(e-s)})</span>`;
+  const leftPct = (s/dur)*100, widthPct = ((e-s)/dur)*100;
+  trimBarSelected.style.left = leftPct + '%';
+  trimBarSelected.style.width = widthPct + '%';
+}
+
+function updatePlayhead(){
+  const dur = video.duration || 1;
+  const pct = (video.currentTime/dur)*100;
+  trimBarPlayhead.style.left = pct + '%';
+}
+video.addEventListener('timeupdate', updatePlayhead);
+video.addEventListener('timeupdate', updatePhaseLive);
+
+function updatePhaseLive(){
+  if (!lastAnalysis){ phaseBadge.style.display = 'none'; return; }
+  const { rangeStart, rangeEnd, hasDrive, splitTime } = lastAnalysis;
+  const t = video.currentTime;
+  if (t < rangeStart - 0.05 || t > rangeEnd + 0.05){
+    phaseBadge.style.display = 'none';
+  } else {
+    phaseBadge.style.display = 'block';
+    if (hasDrive && t < splitTime){
+      phaseBadge.textContent = 'Drive phase';
+      phaseBadge.className = 'phase-badge drive';
+    } else {
+      phaseBadge.textContent = hasDrive ? 'Stride phase' : 'Stride / max-velocity';
+      phaseBadge.className = 'phase-badge stride';
+    }
+  }
+  // move the readout playhead too, mapped onto the analyzed [rangeStart, rangeEnd] window
+  const dur = Math.max(0.001, rangeEnd - rangeStart);
+  const pct = Math.min(100, Math.max(0, ((t - rangeStart) / dur) * 100));
+  phaseBarPlayhead.style.left = pct + '%';
+}
+
+trimStart.addEventListener('input', updateTrimUI);
+trimEnd.addEventListener('input', updateTrimUI);
+
+setStartBtn.addEventListener('click', () => {
+  trimStart.value = Math.min(video.currentTime, parseFloat(trimEnd.value) - 0.2);
+  updateTrimUI();
+});
+setEndBtn.addEventListener('click', () => {
+  trimEnd.value = Math.max(video.currentTime, parseFloat(trimStart.value) + 0.2);
+  updateTrimUI();
+});
+resetTrimBtn.addEventListener('click', () => {
+  trimStart.value = 0;
+  trimEnd.value = video.duration || 0;
+  updateTrimUI();
+});
+previewTrimBtn.addEventListener('click', () => {
+  if (previewWatcher) video.removeEventListener('timeupdate', previewWatcher);
+  const s = parseFloat(trimStart.value), e = parseFloat(trimEnd.value);
+  video.currentTime = s;
+  video.play();
+  previewWatcher = () => {
+    if (video.currentTime >= e){
+      video.pause();
+      video.removeEventListener('timeupdate', previewWatcher);
+      previewWatcher = null;
+    }
+  };
+  video.addEventListener('timeupdate', previewWatcher);
+});
+
+resetBtn.addEventListener('click', () => {
+  video.pause();
+  video.src = '';
+  stage.classList.remove('active');
+  resultsEl.classList.remove('active');
+  dropzone.style.display = '';
+  framesData = [];
+  lastAnalysis = null;
+  phaseBadge.style.display = 'none';
+});
+
+async function ensureDetector(){
+  if (detector) return detector;
+  progressLabel.textContent = 'loading pose model…';
+  progressWrap.classList.add('active');
+  await tf.ready();
+  detector = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, {
+    modelType: poseDetection.movenet.modelType.SINGLEPOSE_THUNDER
+  });
+  return detector;
+}
+
+analyzeBtn.addEventListener('click', runAnalysis);
+
+async function runAnalysis(){
+  analyzeBtn.disabled = true;
+  progressWrap.classList.add('active');
+  resultsEl.classList.remove('active');
+  framesData = [];
+
+  try{
+    await ensureDetector();
+
+    const rangeStart = parseFloat(trimStart.value) || 0;
+    const rangeEnd = parseFloat(trimEnd.value) || video.duration;
+    const duration = Math.max(0.2, rangeEnd - rangeStart);
+    const sampleHz = 16; // sampled frames per second of footage (bumped for finer ground/air-time timing)
+    const step = 1 / sampleHz;
+    const total = Math.max(1, Math.floor(duration / step));
+
+    const off = document.createElement('canvas');
+    off.width = video.videoWidth;
+    off.height = video.videoHeight;
+    const octx = off.getContext('2d');
+
+    for (let i = 0; i <= total; i++){
+      const t = Math.min(rangeStart + i * step, rangeEnd - 0.01);
+      await seekTo(t);
+      octx.drawImage(video, 0, 0, off.width, off.height);
+      const poses = await detector.estimatePoses(off, { flipHorizontal:false });
+      if (poses[0] && poses[0].keypoints){
+        const kp = {};
+        poses[0].keypoints.forEach(k => { kp[k.name] = k; });
+        framesData.push({ t, kp });
+        if (skeletonToggle.checked) drawSkeleton(kp);
+      }
+      const pct = Math.round((i/total)*100);
+      progressBar.style.width = pct + '%';
+      progressPct.textContent = pct + '%';
+      progressLabel.textContent = `analyzing frame ${i+1} / ${total+1}`;
+    }
+
+    progressLabel.textContent = 'crunching biomechanics…';
+    await new Promise(r => setTimeout(r, 150));
+
+    const fullMetrics = computeMetrics(framesData);
+    const split = detectPhaseSplit(fullMetrics.leanSeries);
+
+    let driveFrames = [], strideFrames = framesData, hasDrive = false, splitTime = null;
+    if (split != null){
+      const candidateDrive = framesData.filter(f => f.t < split);
+      const candidateStride = framesData.filter(f => f.t >= split);
+      if (candidateDrive.length >= 4 && candidateStride.length >= 4){
+        driveFrames = candidateDrive;
+        strideFrames = candidateStride;
+        hasDrive = true;
+        splitTime = split;
+      }
+    }
+    const driveMetrics = hasDrive ? computeMetrics(driveFrames) : null;
+    const strideMetrics = computeMetrics(strideFrames);
+
+    lastAnalysis = { rangeStart, rangeEnd, hasDrive, splitTime };
+    renderResults({ fullMetrics, driveMetrics, strideMetrics, hasDrive, splitTime, rangeStart, rangeEnd });
+    phaseBadge.style.display = 'block';
+
+  } catch(err){
+    console.error(err);
+    progressLabel.textContent = 'something went wrong reading this clip — try a shorter or lower-res video.';
+  } finally {
+    progressWrap.classList.remove('active');
+    analyzeBtn.disabled = false;
+  }
+}
+
+function seekTo(t){
+  return new Promise(resolve => {
+    const onSeeked = () => { video.removeEventListener('seeked', onSeeked); resolve(); };
+    video.addEventListener('seeked', onSeeked);
+    video.currentTime = t;
+  });
+}
+
+function drawSkeleton(kp){
+  fitOverlay();
+  const ctx = overlay.getContext('2d');
+  ctx.clearRect(0,0,overlay.width,overlay.height);
+  ctx.strokeStyle = '#D4FF3D';
+  ctx.lineWidth = Math.max(2, overlay.width/220);
+  ctx.fillStyle = '#FF4E32';
+  EDGES.forEach(([a,b]) => {
+    const pa = kp[a], pb = kp[b];
+    if (pa && pb && pa.score > 0.3 && pb.score > 0.3){
+      ctx.beginPath();
+      ctx.moveTo(pa.x, pa.y);
+      ctx.lineTo(pb.x, pb.y);
+      ctx.stroke();
+    }
+  });
+  Object.values(kp).forEach(p => {
+    if (p.score > 0.3){
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, Math.max(3, overlay.width/160), 0, Math.PI*2);
+      ctx.fill();
+    }
+  });
+}
+
+// ---------- biomechanics ----------
+
+// Detects a drive(acceleration) → stride(top-speed) transition from how forward trunk lean
+// decays over the clip. Sprinters lean hardest at the start of a rep and progressively rise to
+// a more upright "cruise" lean as they hit top speed — this looks for that decay and returns the
+// time it settles, or null if the clip doesn't show a meaningful lean drop-off (e.g. a flying-start
+// clip that's already all top-speed).
+function detectPhaseSplit(leanSeries){
+  if (!leanSeries || leanSeries.length < 8) return null;
+
+  // light smoothing to ignore per-frame jitter
+  const win = 3;
+  const smoothed = leanSeries.map((p,i) => {
+    const lo = Math.max(0,i-win), hi = Math.min(leanSeries.length-1,i+win);
+    let sum=0, cnt=0;
+    for (let j=lo;j<=hi;j++){ sum += leanSeries[j].v; cnt++; }
+    return { t:p.t, v: sum/cnt };
+  });
+
+  const sortedVals = smoothed.map(p=>p.v).slice().sort((a,b)=>a-b);
+  const lowerCount = Math.max(1, Math.floor(sortedVals.length*0.4));
+  const baseline = sortedVals.slice(0, lowerCount).reduce((s,v)=>s+v,0) / lowerCount; // "cruise" lean estimate
+
+  const initialCount = Math.max(1, Math.floor(smoothed.length*0.15));
+  const initialVal = smoothed.slice(0, initialCount).reduce((s,p)=>s+p.v,0) / initialCount;
+
+  const driveMargin = initialVal - baseline;
+  if (driveMargin < 6) return null; // not enough lean decay to call a distinct drive phase
+
+  const threshold = baseline + driveMargin * 0.35;
+  for (let i=0;i<smoothed.length-2;i++){
+    if (smoothed[i].v <= threshold && smoothed[i+1].v <= threshold && smoothed[i+2].v <= threshold){
+      return smoothed[i].t;
+    }
+  }
+  return null;
+}
+
+function angleAt(p1,p2,p3){
+  const v1 = {x:p1.x-p2.x, y:p1.y-p2.y};
+  const v2 = {x:p3.x-p2.x, y:p3.y-p2.y};
+  const dot = v1.x*v2.x + v1.y*v2.y;
+  const m1 = Math.hypot(v1.x,v1.y), m2 = Math.hypot(v2.x,v2.y);
+  if (m1===0 || m2===0) return null;
+  let cos = dot/(m1*m2);
+  cos = Math.max(-1, Math.min(1, cos));
+  return Math.acos(cos) * 180/Math.PI;
+}
+
+function vertAngle(v){
+  return Math.atan2(Math.abs(v.x), Math.abs(v.y)) * 180/Math.PI;
+}
+
+const CONF = 0.3;
+function ok(p){ return p && p.score > CONF; }
+
+function computeMetrics(frames){
+  const good = frames.filter(f => ok(f.kp.left_hip) || ok(f.kp.right_hip));
+  if (good.length < 4){
+    return { insufficient:true };
+  }
+
+  // direction of travel from hip-mid x
+  const hipXs = good.map(f => {
+    const l = f.kp.left_hip, r = f.kp.right_hip;
+    if (ok(l) && ok(r)) return (l.x+r.x)/2;
+    return ok(l) ? l.x : r.x;
+  });
+  const dir = Math.sign(hipXs[hipXs.length-1] - hipXs[0]) || 1;
+
+  const leanSeries = [], kneeLSeries = [], kneeRSeries = [], elbowSeries = [];
+  const thighDriveL = [], thighDriveR = [];
+  const torsoLens = [];
+  const hipYs = [];
+  const times = [];
+  const armSwingL = [], armSwingR = [], elbowLSeries = [], elbowRSeries = [];
+  const shoulderWidths = [], hipWidths = [];
+
+  // frame-aligned arrays (one slot per sampled frame, null where that point wasn't tracked) —
+  // required for anything that compares left vs right leg at the *same instant*, like cadence.
+  const n = frames.length;
+  const ankleLxA = new Array(n).fill(null), ankleLyA = new Array(n).fill(null);
+  const ankleRxA = new Array(n).fill(null), ankleRyA = new Array(n).fill(null);
+  const hipMidXA = new Array(n).fill(null);
+
+  frames.forEach((f, idx) => {
+    const kp = f.kp;
+    const ls=kp.left_shoulder, rs=kp.right_shoulder, lh=kp.left_hip, rh=kp.right_hip;
+    const lk=kp.left_knee, rk=kp.right_knee, la=kp.left_ankle, ra=kp.right_ankle;
+    const le=kp.left_elbow, re=kp.right_elbow, lw=kp.left_wrist, rw=kp.right_wrist;
+
+    if (ok(lh) && ok(rh)) hipMidXA[idx] = (lh.x+rh.x)/2;
+    else if (ok(lh)) hipMidXA[idx] = lh.x;
+    else if (ok(rh)) hipMidXA[idx] = rh.x;
+
+    if (ok(la)){ ankleLxA[idx] = la.x; ankleLyA[idx] = la.y; }
+    if (ok(ra)){ ankleRxA[idx] = ra.x; ankleRyA[idx] = ra.y; }
+
+    // shoulder/hip line width — in a true side-on view this line points straight at the camera, so
+    // it should stay narrow and roughly constant. It widens when the torso/pelvis rotates open toward
+    // or away from the lens, which is our visible proxy for rotational ("twisting") energy leak.
+    if (ok(ls) && ok(rs)) shoulderWidths.push({t:f.t, v: Math.hypot(rs.x-ls.x, rs.y-ls.y)});
+    if (ok(lh) && ok(rh)) hipWidths.push({t:f.t, v: Math.hypot(rh.x-lh.x, rh.y-lh.y)});
+
+    if (ok(ls) && ok(rs) && ok(lh) && ok(rh)){
+      const shoulderMid = {x:(ls.x+rs.x)/2, y:(ls.y+rs.y)/2};
+      const hipMid = {x:(lh.x+rh.x)/2, y:(lh.y+rh.y)/2};
+      const trunkV = {x: shoulderMid.x - hipMid.x, y: shoulderMid.y - hipMid.y};
+      const mag = vertAngle(trunkV);
+      const sign = Math.sign(trunkV.x * dir) || 1;
+      leanSeries.push({t:f.t, v: mag*sign});
+      torsoLens.push(Math.hypot(trunkV.x, trunkV.y));
+      hipYs.push(hipMid.y);
+      times.push(f.t);
+
+      if (ok(lh) && ok(lk)){
+        thighDriveL.push({t:f.t, v: vertAngle({x:lk.x-lh.x, y:lk.y-lh.y})});
+      }
+      if (ok(rh) && ok(rk)){
+        thighDriveR.push({t:f.t, v: vertAngle({x:rk.x-rh.x, y:rk.y-rh.y})});
+      }
+    }
+    if (ok(lh) && ok(lk) && ok(la)){
+      const a = angleAt(lh,lk,la);
+      if (a!=null) kneeLSeries.push({t:f.t, v:a});
+    }
+    if (ok(rh) && ok(rk) && ok(ra)){
+      const a = angleAt(rh,rk,ra);
+      if (a!=null) kneeRSeries.push({t:f.t, v:a});
+    }
+    if (ok(ls) && ok(le) && ok(lw)){
+      const a = angleAt(ls,le,lw);
+      if (a!=null){ elbowSeries.push(a); elbowLSeries.push({t:f.t, v:a}); }
+    }
+    if (ok(rs) && ok(re) && ok(rw)){
+      const a = angleAt(rs,re,rw);
+      if (a!=null){ elbowSeries.push(a); elbowRSeries.push({t:f.t, v:a}); }
+    }
+
+    // arm swing: angle of shoulder->wrist off vertical, signed forward(+)/back(-) by travel direction
+    const hipRefY = (ok(lh) && ok(rh)) ? (lh.y+rh.y)/2 : (ok(lh)?lh.y:(ok(rh)?rh.y:null));
+    if (ok(ls) && ok(lw)){
+      const v = {x: lw.x-ls.x, y: lw.y-ls.y};
+      const sign = Math.sign(v.x*dir) || 1;
+      armSwingL.push({t:f.t, v: vertAngle(v)*sign, wristY: lw.y, shoulderY: ls.y, hipRefY});
+    }
+    if (ok(rs) && ok(rw)){
+      const v = {x: rw.x-rs.x, y: rw.y-rs.y};
+      const sign = Math.sign(v.x*dir) || 1;
+      armSwingR.push({t:f.t, v: vertAngle(v)*sign, wristY: rw.y, shoulderY: rs.y, hipRefY});
+    }
+  });
+
+  const avg = arr => arr.length ? arr.reduce((s,x)=>s+x,0)/arr.length : null;
+  const avgV = arr => avg(arr.map(x=>x.v));
+
+  const avgLean = avgV(leanSeries);
+  const avgKneeL = avgV(kneeLSeries);
+  const avgKneeR = avgV(kneeRSeries);
+  const avgElbow = avg(elbowSeries);
+  const avgTorso = avg(torsoLens) || 1;
+
+  const maxDriveL = thighDriveL.length ? Math.max(...thighDriveL.map(x=>x.v)) : null;
+  const maxDriveR = thighDriveR.length ? Math.max(...thighDriveR.map(x=>x.v)) : null;
+  const avgMaxDrive = avg([maxDriveL, maxDriveR].filter(v=>v!=null));
+
+  // vertical oscillation: average per-stride-cycle peak-to-trough amplitude (see estimateOscillationPct
+  // for why this replaced a naive whole-clip max-minus-min, which was very outlier/drift-prone)
+  const oscillation = estimateOscillationPct(times, hipYs, avgTorso);
+
+  // cadence: sign changes of (ankleL.x - ankleR.x) between the *same* sampled frame —
+  // skips frames where either ankle wasn't tracked, but never compares across mismatched frames.
+  let crossings = 0, lastSign = null, pairedSamples = 0;
+  for (let i=0;i<n;i++){
+    if (ankleLxA[i] == null || ankleRxA[i] == null) continue;
+    const d = ankleLxA[i] - ankleRxA[i];
+    const s = Math.sign(d);
+    pairedSamples++;
+    if (s !== 0){
+      if (lastSign !== null && s !== lastSign) crossings++;
+      lastSign = s;
+    }
+  }
+  const clipDuration = frames[frames.length-1].t - frames[0].t || 1;
+  // each crossing marks one foot passing the other — roughly one step
+  const stepsPerSec = crossings / clipDuration;
+  const cadence = pairedSamples >= 4 ? Math.round(stepsPerSec * 60) : null;
+
+  // overstride: at ankle-y local maxima (foot near ground) compare ankle.x to hip.x from the same frame
+  function overstrideForLeg(xs, ys){
+    const offsets = [];
+    for (let i=1;i<n-1;i++){
+      if (ys[i]==null || ys[i-1]==null || ys[i+1]==null || hipMidXA[i]==null) continue;
+      if (ys[i] > ys[i-1] && ys[i] > ys[i+1]){
+        offsets.push(((xs[i]-hipMidXA[i]) * dir / avgTorso) * 100);
+      }
+    }
+    return offsets;
+  }
+  const overstrideOffsets = [...overstrideForLeg(ankleLxA, ankleLyA), ...overstrideForLeg(ankleRxA, ankleRyA)];
+  const avgOverstride = avg(overstrideOffsets);
+
+  // ---- arm swing efficiency ----
+  function armSideStats(series){
+    if (series.length < 3) return null;
+    let maxV = -Infinity, minV = Infinity;
+    let frontHandHeight = null, backHandHeight = null;
+    series.forEach(p => {
+      if (p.v > maxV) maxV = p.v;
+      if (p.v < minV) minV = p.v;
+      // front swing (v>0): track the *highest* the wrist actually gets relative to the shoulder,
+      // independent of which frame has the biggest swing angle — angle and height peak at different instants.
+      if (p.v > 0){
+        const h = ((p.shoulderY - p.wristY) / avgTorso) * 100;
+        if (frontHandHeight == null || h > frontHandHeight) frontHandHeight = h;
+      } else {
+        // back swing (v<=0): track how low the wrist gets relative to the hip line
+        const h = ((p.hipRefY - p.wristY) / avgTorso) * 100;
+        if (backHandHeight == null || h < backHandHeight) backHandHeight = h;
+      }
+    });
+    const amplitude = maxV - minV;
+    return { amplitude, frontHandHeight, backHandHeight };
+  }
+  const armL = armSideStats(armSwingL);
+  const armR = armSideStats(armSwingR);
+  const armAmplitude = avg([armL, armR].filter(Boolean).map(a=>a.amplitude));
+  const armFrontHeight = avg([armL, armR].filter(Boolean).map(a=>a.frontHandHeight).filter(v=>v!=null));
+  const armBackHeight = avg([armL, armR].filter(Boolean).map(a=>a.backHandHeight).filter(v=>v!=null));
+  const armSymmetryPct = (armL && armR)
+    ? (Math.abs(armL.amplitude - armR.amplitude) / (((armL.amplitude + armR.amplitude)/2) || 1)) * 100
+    : null;
+  const elbowRangeL = elbowLSeries.length ? Math.max(...elbowLSeries.map(p=>p.v)) - Math.min(...elbowLSeries.map(p=>p.v)) : null;
+  const elbowRangeR = elbowRSeries.length ? Math.max(...elbowRSeries.map(p=>p.v)) - Math.min(...elbowRSeries.map(p=>p.v)) : null;
+  const elbowRange = avg([elbowRangeL, elbowRangeR].filter(v=>v!=null));
+
+  // ---- ground contact time & air (flight) time, estimated from hip vertical oscillation ----
+  // Hip height dips to a local low point (max image-y) at each foot's midstance, and rises to a
+  // local high point (min image-y) at the float apex between steps. We split each dip-to-dip cycle
+  // at the midpoint threshold between its bounding peaks and its trough, interpolating the exact
+  // crossing time — time spent "low" (near the ground) approximates ground contact, time spent
+  // "high" approximates air time. This is a proxy, not a direct foot-strike measurement.
+  const strideTiming = estimateStrideTiming(times, hipYs);
+
+  // ---- energy leakage: non-forward force, split into rotational (twist) and braking (backward) ----
+  // NOTE: true side-to-side sway can't be seen from a side-on camera — that axis points straight at
+  // the lens. These two are the leakage signals that ARE visible from the side.
+  const shoulderRotationLeak = cvPct(shoulderWidths);
+  const hipRotationLeak = cvPct(hipWidths);
+  const brakingLeak = estimateBrakingPct(frames, hipMidXA, ankleLyA, ankleRyA, dir);
+
+  return {
+    insufficient:false,
+    avgLean, avgKneeL, avgKneeR, avgElbow, avgMaxDrive, oscillation, cadence, avgOverstride,
+    armAmplitude, armFrontHeight, armBackHeight, armSymmetryPct, elbowRange,
+    strideTiming, shoulderRotationLeak, hipRotationLeak, brakingLeak,
+    leanSeries, kneeLSeries, kneeRSeries, armSwingL, armSwingR
+  };
+}
+
+// Coefficient of variation (%) of a {t,v} series — how much a width wobbles relative to its own
+// average. Used on shoulder/hip line width as a proxy for trunk rotation.
+function cvPct(series){
+  if (!series || series.length < 6) return null;
+  const vals = series.map(p=>p.v);
+  const mean = vals.reduce((s,v)=>s+v,0)/vals.length;
+  if (mean <= 0) return null;
+  const variance = vals.reduce((s,v)=>s+(v-mean)*(v-mean),0)/vals.length;
+  return (Math.sqrt(variance)/mean)*100;
+}
+
+// Braking leak: at each detected foot-strike, compares forward hip velocity just before contact to
+// the lowest velocity in the ~150ms right after — the dip is a proxy for backward-directed braking
+// force (typically from landing ahead of the hip), not a direct force measurement.
+function estimateBrakingPct(frames, hipMidXA, ankleLyA, ankleRyA, dir){
+  const n = frames.length;
+  const velSeries = [];
+  for (let i=1;i<n-1;i++){
+    if (hipMidXA[i-1]==null || hipMidXA[i+1]==null) continue;
+    const dt = frames[i+1].t - frames[i-1].t;
+    if (dt<=0) continue;
+    velSeries.push({ t: frames[i].t, v: ((hipMidXA[i+1]-hipMidXA[i-1])/dt) * dir });
+  }
+  if (velSeries.length < 5) return null;
+
+  function velAt(t){
+    for (let k=0;k<velSeries.length-1;k++){
+      if (velSeries[k].t<=t && velSeries[k+1].t>=t){
+        const span = velSeries[k+1].t - velSeries[k].t || 1e-6;
+        const f = (t - velSeries[k].t)/span;
+        return velSeries[k].v + f*(velSeries[k+1].v - velSeries[k].v);
+      }
+    }
+    return null;
+  }
+
+  const strikeTimes = [];
+  [ankleLyA, ankleRyA].forEach(ys => {
+    for (let i=1;i<n-1;i++){
+      if (ys[i]==null || ys[i-1]==null || ys[i+1]==null) continue;
+      if (ys[i] > ys[i-1] && ys[i] > ys[i+1]) strikeTimes.push(frames[i].t);
+    }
+  });
+  if (!strikeTimes.length) return null;
+
+  const drops = [];
+  strikeTimes.forEach(st => {
+    const preV = velAt(Math.max(velSeries[0].t, st - 0.06));
+    let minV = null;
+    velSeries.forEach(p => { if (p.t >= st && p.t <= st + 0.15){ if (minV==null || p.v < minV) minV = p.v; } });
+    if (preV!=null && minV!=null && preV > 0){
+      const dropPct = ((preV - minV)/preV) * 100;
+      if (dropPct > -50 && dropPct < 100) drops.push(dropPct);
+    }
+  });
+  if (!drops.length) return null;
+  return drops.reduce((s,v)=>s+v,0)/drops.length;
+}
+
+// Shared cycle finder: walks a hip-height series and returns clean max→min→max triples
+// (one per stride cycle). Used by both stride timing (ground/air split) and vertical
+// oscillation, so both are measured per-cycle instead of over the whole clip at once.
+function findHipCycles(times, values){
+  if (times.length < 6) return null;
+
+  const extrema = [];
+  for (let i=1;i<values.length-1;i++){
+    if (values[i] > values[i-1] && values[i] >= values[i+1]) extrema.push({i, t:times[i], v:values[i], type:'max'});
+    else if (values[i] < values[i-1] && values[i] <= values[i+1]) extrema.push({i, t:times[i], v:values[i], type:'min'});
+  }
+  if (extrema.length < 3) return null;
+
+  const clean = [];
+  extrema.forEach(e => {
+    const last = clean[clean.length-1];
+    if (last && last.type === e.type){
+      if ((e.type==='max' && e.v > last.v) || (e.type==='min' && e.v < last.v)) clean[clean.length-1] = e;
+    } else {
+      clean.push(e);
+    }
+  });
+
+  const triples = [];
+  for (let k=0;k<clean.length-2;k++){
+    const a = clean[k], mid = clean[k+1], b = clean[k+2];
+    if (a.type !== 'max' || mid.type !== 'min' || b.type !== 'max') continue;
+    const stepTime = b.t - a.t;
+    if (stepTime <= 0 || stepTime > 1.2) continue; // guard against bad detections
+    triples.push({ a, mid, b, stepTime });
+  }
+  return triples.length ? triples : null;
+}
+
+// Vertical oscillation, measured as the average peak-to-trough amplitude *within each detected
+// stride cycle*, not the max-minus-min over the whole clip. A single mistracked frame (much more
+// likely when the runner is small/distant in the source video) only taints the one cycle it falls
+// in this way, instead of blowing out the entire reading — and slow camera drift or the runner
+// changing distance from the camera no longer gets counted as "bounce".
+function estimateOscillationPct(times, values, avgTorso){
+  const triples = findHipCycles(times, values);
+  if (!triples) return null;
+  const amplitudesPx = triples.map(({a,mid,b}) => ((a.v + b.v)/2) - mid.v).filter(v => v > 0);
+  if (!amplitudesPx.length) return null;
+  const avgPx = amplitudesPx.reduce((s,v)=>s+v,0) / amplitudesPx.length;
+  return (avgPx / avgTorso) * 100;
+}
+
+function estimateStrideTiming(times, values){
+  const triples = findHipCycles(times, values);
+  if (!triples) return null;
+
+  const cycles = [];
+  triples.forEach(({a, mid, b, stepTime}) => {
+    const threshold = ((a.v + b.v) / 2 + mid.v) / 2;
+
+    // walk samples between a.i and b.i, summing time above/below threshold with linear interpolation at crossings
+    let contactTime = 0, flightTime = 0;
+    for (let i=a.i; i<b.i; i++){
+      const t0=times[i], t1=times[i+1], v0=values[i], v1=values[i+1];
+      const dt = t1-t0;
+      if (dt<=0) continue;
+      const above0 = v0 >= threshold, above1 = v1 >= threshold;
+      if (above0 === above1){
+        if (above0) contactTime += dt; else flightTime += dt;
+      } else {
+        const frac = (threshold - v0) / ((v1 - v0) || 1e-6);
+        const tCross = t0 + frac*dt;
+        const seg1 = tCross - t0, seg2 = t1 - tCross;
+        if (above0){ contactTime += seg1; flightTime += seg2; } else { flightTime += seg1; contactTime += seg2; }
+      }
+    }
+    cycles.push({ t: a.t, stepTime, contactTime, flightTime });
+  });
+  if (!cycles.length) return null;
+
+  const avgArr = arr => arr.reduce((s,x)=>s+x,0)/arr.length;
+  const avgContactMs = avgArr(cycles.map(c=>c.contactTime)) * 1000;
+  const avgFlightMs = avgArr(cycles.map(c=>c.flightTime)) * 1000;
+  const avgStepMs = avgArr(cycles.map(c=>c.stepTime)) * 1000;
+  const flightRatio = avgContactMs > 0 ? avgFlightMs / avgContactMs : null;
+
+  return { avgContactMs, avgFlightMs, avgStepMs, flightRatio, cycles };
+}
+
+function metricCard(tag, value, unit, flag){
+  const div = document.createElement('div');
+  div.className = 'metric-card' + (flag ? ' flag-'+flag : '');
+  div.innerHTML = `<div class="tag">${tag}</div><div class="val">${value}<span class="unit">${unit}</span></div>`;
+  return div;
+}
+
+function fbItem(kind, title, body){
+  const li = document.createElement('li');
+  li.className = 'feedback-item ' + kind;
+  li.innerHTML = `<div class="dot"></div><div class="body"><b>${title}.</b> ${body}</div>`;
+  return li;
+}
+
+function renderResults(data){
+  const { fullMetrics, driveMetrics, strideMetrics, hasDrive, splitTime, rangeStart, rangeEnd } = data;
+  resultsEl.classList.add('active');
+
+  const dur = Math.max(0.001, rangeEnd - rangeStart);
+  if (hasDrive){
+    const driveWidthPct = ((splitTime - rangeStart) / dur) * 100;
+    phaseSegDrive.style.display = 'block';
+    phaseSegDrive.style.left = '0%';
+    phaseSegDrive.style.width = driveWidthPct + '%';
+    phaseSegStride.style.display = 'block';
+    phaseSegStride.style.left = driveWidthPct + '%';
+    phaseSegStride.style.width = (100 - driveWidthPct) + '%';
+    phaseReadout.innerHTML = `<span class="k-drive">● Drive ${fmtT(rangeStart)} – ${fmtT(splitTime)}</span><span class="k-stride">● Stride ${fmtT(splitTime)} – ${fmtT(rangeEnd)}</span>`;
+    drivePanel.style.display = '';
+    stridePanelTitle.textContent = 'Stride / max-velocity phase';
+    stridePanelNote.textContent = 'Top-speed mechanics — tall posture, short ground contact, full cyclical range.';
+  } else {
+    phaseSegDrive.style.display = 'none';
+    phaseSegStride.style.display = 'block';
+    phaseSegStride.style.left = '0%';
+    phaseSegStride.style.width = '100%';
+    phaseReadout.innerHTML = `<span class="k-stride">No distinct drive phase detected — treating the whole clip as top-speed / stride</span>`;
+    drivePanel.style.display = 'none';
+    stridePanelTitle.textContent = 'Full clip';
+    stridePanelNote.textContent = 'No clear acceleration lean-decay detected — likely a flying / top-speed clip throughout, or the clip is too short to tell.';
+  }
+
+  if (hasDrive) buildPhasePanel(driveMetricGrid, driveFeedbackList, driveMetrics, 'drive');
+  buildPhasePanel(strideMetricGrid, strideFeedbackList, strideMetrics, 'stride');
+
+  drawCharts(fullMetrics);
+}
+
+function buildPhasePanel(grid, list, m, phase){
+  grid.innerHTML = '';
+  list.innerHTML = '';
+  const isDrive = phase === 'drive';
+  const round1 = v => v==null ? '—' : Math.round(v*10)/10;
+
+  if (m.insufficient){
+    list.appendChild(fbItem('watch','Not enough tracking data','Splitline could only get a clear read on a few frames in this phase. Try a clip filmed side-on, with the whole body in frame and less motion blur.'));
+    return;
+  }
+
+  const kneeGoodMin = isDrive ? 45 : 65;
+  const cadGoodMin = isDrive ? 130 : 160;
+
+  grid.appendChild(metricCard('Forward lean', round1(m.avgLean), '°',
+    (m.avgLean!=null && (isDrive ? m.avgLean>=18 : (m.avgLean>=4 && m.avgLean<=16))) ? 'good' : 'watch'));
+  grid.appendChild(metricCard('Knee drive', round1(m.avgMaxDrive), '°',
+    (m.avgMaxDrive!=null && m.avgMaxDrive>=kneeGoodMin) ? 'good' : 'watch'));
+  grid.appendChild(metricCard('Elbow angle', round1(m.avgElbow), '°',
+    (m.avgElbow!=null && m.avgElbow>=65 && m.avgElbow<=120) ? 'good' : 'watch'));
+  grid.appendChild(metricCard('Cadence', m.cadence || '—', 'spm',
+    (m.cadence && m.cadence>=cadGoodMin) ? 'good' : 'watch'));
+  grid.appendChild(metricCard('Vert. bounce', round1(m.oscillation), '%',
+    (m.oscillation!=null && m.oscillation<=12) ? 'good' : 'watch'));
+  grid.appendChild(metricCard('Foot placement', round1(m.avgOverstride), '%',
+    (m.avgOverstride!=null && m.avgOverstride<=8) ? 'good' : 'watch'));
+  grid.appendChild(metricCard('Arm amplitude', round1(m.armAmplitude), '°',
+    (m.armAmplitude!=null && m.armAmplitude>=75 && m.armAmplitude<=135) ? 'good' : 'watch'));
+
+  const st = m.strideTiming;
+  if (st){
+    grid.appendChild(metricCard('Ground contact', Math.round(st.avgContactMs), 'ms', null));
+    grid.appendChild(metricCard('Air : ground', st.flightRatio!=null ? (Math.round(st.flightRatio*100)/100) : '—', '×',
+      isDrive
+        ? ((st.flightRatio!=null && st.flightRatio<=1.1) ? 'good' : 'watch')
+        : ((st.flightRatio!=null && st.flightRatio>=0.8) ? 'good' : 'watch')));
+  }
+
+  grid.appendChild(metricCard('Shoulder rotation', round1(m.shoulderRotationLeak), '%',
+    (m.shoulderRotationLeak!=null && m.shoulderRotationLeak<=20) ? 'good' : 'watch'));
+  grid.appendChild(metricCard('Hip rotation', round1(m.hipRotationLeak), '%',
+    (m.hipRotationLeak!=null && m.hipRotationLeak<=20) ? 'good' : 'watch'));
+  grid.appendChild(metricCard('Braking leak', round1(m.brakingLeak), '%',
+    (m.brakingLeak!=null && m.brakingLeak<=30) ? 'good' : 'watch'));
+
+  // ---- feedback ----
+  if (m.avgLean != null){
+    if (isDrive){
+      if (m.avgLean < 18){
+        list.appendChild(fbItem('watch','Get lower off the mark','Your trunk is fairly upright for the acceleration phase. Early strides should come from a strong forward lean at the ankle — push the ground away behind you rather than standing up early.'));
+      } else {
+        list.appendChild(fbItem('good','Drive lean looks strong','Good forward projection through acceleration — you are loading the push rather than standing tall too soon.'));
+      }
+    } else {
+      if (m.avgLean < 4){
+        list.appendChild(fbItem('watch','Get more forward lean','Your torso is close to upright through this phase. At top speed sprinters carry a slight, whole-body forward lean from the ankle.'));
+      } else if (m.avgLean > 18){
+        list.appendChild(fbItem('watch','Ease off the forward lean','You are bending quite far forward, often from the waist, which can flatten your knee drive at top speed.'));
+      } else {
+        list.appendChild(fbItem('good','Forward lean looks solid','Your torso angle sits in the range coaches look for at top speed.'));
+      }
+    }
+  }
+
+  if (m.avgMaxDrive != null){
+    if (m.avgMaxDrive < kneeGoodMin){
+      list.appendChild(fbItem('watch','Drive the knee higher', isDrive
+        ? 'Early acceleration steps are shorter and quicker, but the thigh should still punch forward with purpose — a lazy knee here shows up as low push-off power.'
+        : 'Your thigh isn\'t reaching close to horizontal on the front side of the stride. More knee lift usually means a longer, more powerful ground strike.'));
+    } else {
+      list.appendChild(fbItem('good','Knee drive is doing its job', isDrive
+        ? 'Solid thigh punch through the acceleration steps — a good sign of powerful, purposeful strides off the line.'
+        : 'Your lead thigh is getting up toward horizontal, a strong sign of front-side mechanics.'));
+    }
+  }
+
+  if (m.avgElbow != null){
+    if (m.avgElbow > 120){
+      list.appendChild(fbItem('watch','Bend the elbows more','Your arms are swinging fairly straight. A tighter elbow bend lets your arms drive faster.'));
+    } else if (m.avgElbow < 65){
+      list.appendChild(fbItem('watch','Loosen the elbow bend slightly','Your arms are quite tightly folded — aim for roughly a 90° bend rather than fully closed.'));
+    } else {
+      list.appendChild(fbItem('good','Arm swing angle is efficient','Elbow bend sits close to the ~90° range sprinters use for a fast, controlled arm drive.'));
+    }
+  }
+
+  if (m.cadence){
+    if (m.cadence < cadGoodMin){
+      list.appendChild(fbItem('watch','Turnover could be quicker', isDrive
+        ? 'Cadence is low even accounting for the building-up nature of acceleration — check you are not reaching out for overly long steps this early.'
+        : 'Estimated cadence is on the lower side for top-speed sprinting. Check for overstriding before chasing a longer stride.'));
+    } else {
+      list.appendChild(fbItem('good','Cadence looks strong for this phase','Step rate is consistent with efficient turnover here.'));
+    }
+  }
+
+  if (m.oscillation != null && m.oscillation > 14){
+    list.appendChild(fbItem('watch','Reduce vertical bounce','Hips are moving up and down more than expected relative to torso length — that\'s energy going up instead of forward.'));
+  }
+
+  if (m.avgOverstride != null){
+    if (m.avgOverstride > 10){
+      list.appendChild(fbItem('watch','Watch for overstriding','Foot is landing well ahead of the hip at contact, which acts like a brake — aim to land closer under the hips.'));
+    } else {
+      list.appendChild(fbItem('good','Foot strike is well placed','Foot is landing close to under the hips at contact, keeping braking forces low.'));
+    }
+  }
+
+  if (m.armAmplitude != null){
+    if (m.armAmplitude < 75){
+      list.appendChild(fbItem('watch','Open up the arm swing','Arms are moving through a fairly small arc — a bigger, more deliberate swing helps drive the legs.'));
+    } else if (m.armAmplitude > 135){
+      list.appendChild(fbItem('watch','Rein the arm swing in a little','A very large arc can bleed into shoulder rotation and waste energy sideways.'));
+    } else {
+      list.appendChild(fbItem('good','Arm swing range looks efficient','Solid front-to-back arc without over-swinging.'));
+    }
+  }
+
+  if (!isDrive && m.armFrontHeight != null && m.armFrontHeight < -20){
+    list.appendChild(fbItem('watch','Drive the hand higher up front','At the top of the front swing your hand is finishing well below shoulder height — bringing it up toward chin height usually pairs with stronger knee drive.'));
+  }
+
+  if (st){
+    if (st.flightRatio != null){
+      if (isDrive){
+        if (st.flightRatio > 1.1){
+          list.appendChild(fbItem('watch','You may be popping up out of the drive early','More time in the air than on the ground during acceleration usually means standing up too soon — hold the lean and punch longer into the low, powerful steps.'));
+        } else {
+          list.appendChild(fbItem('good','Ground time looks appropriate for the drive','Purposeful contact time typical of a strong acceleration phase, rather than rising up too early.'));
+        }
+      } else {
+        if (st.flightRatio < 0.6){
+          list.appendChild(fbItem('watch','More time on the ground than in the air','Ground contact is running long relative to air time at top speed — short-contact drills (pogo hops, ankling) can help.'));
+        } else {
+          list.appendChild(fbItem('good','Ground contact and air time are well balanced','Quick push-off relative to flight phase — the pattern behind an efficient, powerful stride.'));
+        }
+      }
+    } else {
+      list.appendChild(fbItem('watch','Not enough clean cycles to estimate ground/air time','Needs a few more clear stride cycles in this phase to work from.'));
+    }
+  } else {
+    list.appendChild(fbItem('watch','Not enough data for stride timing','Needs a longer, steadier stretch of strides with the hips clearly visible.'));
+  }
+
+  if (m.shoulderRotationLeak != null){
+    if (m.shoulderRotationLeak > 28){
+      list.appendChild(fbItem('watch','Shoulders are twisting more than expected','Your shoulder line is widening and narrowing a fair bit through the clip, which reads as the upper body rotating rather than staying square to the direction of travel. That is energy going sideways instead of forward — anti-rotation core work and keeping the arm swing tight to the body (not crossing the midline) can help.'));
+    } else {
+      list.appendChild(fbItem('good','Shoulders staying square','Not much twisting through the upper body — little sign of energy leaking out sideways through the shoulders.'));
+    }
+  }
+
+  if (m.hipRotationLeak != null){
+    if (m.hipRotationLeak > 28){
+      list.appendChild(fbItem('watch','Hips are rotating more than expected','Your hip line is widening and narrowing noticeably, which reads as the pelvis rotating rather than driving straight ahead. This often pairs with a shortened stride on one side or a foot that lands slightly across the midline — pelvis-stability drills (single-leg work, banded lateral walks) can help.'));
+    } else {
+      list.appendChild(fbItem('good','Hips staying stable','Little sign of the pelvis twisting side to side — the drive is going straight into forward motion.'));
+    }
+  }
+
+  if (m.shoulderRotationLeak != null && m.hipRotationLeak != null && m.shoulderRotationLeak > m.hipRotationLeak * 1.6 && m.shoulderRotationLeak > 20){
+    list.appendChild(fbItem('watch','Shoulders are twisting more than the hips','A healthy sprint does involve some natural counter-rotation, but your shoulders are rotating noticeably more than your hips here — that gap usually points to the upper body over-compensating, often from an arm swing that crosses the body rather than driving straight front-to-back.'));
+  }
+
+  if (m.brakingLeak != null){
+    if (m.brakingLeak > 35){
+      list.appendChild(fbItem('watch','Notable braking at each footstrike','Forward hip speed dips a fair amount right after each contact, which points to a backward-directed braking force — usually from the foot landing ahead of the hip (see foot placement above). That is forward momentum being spent fighting yourself rather than driving forward.'));
+    } else {
+      list.appendChild(fbItem('good','Minimal braking at contact','Forward hip speed barely dips through ground contact — you are not losing much momentum to backward-directed force each step.'));
+    }
+  }
+}
+
+
+function drawCharts(m){
+  if (leanChartInstance) leanChartInstance.destroy();
+  if (kneeChartInstance) kneeChartInstance.destroy();
+  if (armChartInstance) armChartInstance.destroy();
+  if (strideChartInstance) strideChartInstance.destroy();
+  if (m.insufficient) return;
+
+  const strideCtx = document.getElementById('strideChart');
+  const st = m.strideTiming;
+  strideChartInstance = new Chart(strideCtx, {
+    type:'bar',
+    data:{
+      labels: st ? st.cycles.map((c,i)=>'#'+(i+1)) : [],
+      datasets: st ? [
+        { label:'Ground contact (ms)', data: st.cycles.map(c=>Math.round(c.contactTime*1000)), backgroundColor:'#FF4E32' },
+        { label:'Air time (ms)', data: st.cycles.map(c=>Math.round(c.flightTime*1000)), backgroundColor:'#D4FF3D' }
+      ] : []
+    },
+    options: { ...chartOpts('step #','ms'), scales:{
+      x:{ ...chartOpts('step #','ms').scales.x, stacked:true },
+      y:{ ...chartOpts('step #','ms').scales.y, stacked:true }
+    }}
+  });
+
+  const armCtx = document.getElementById('armChart');
+  armChartInstance = new Chart(armCtx, {
+    type:'line',
+    data:{
+      labels: m.armSwingL.map(p=>p.t.toFixed(2)),
+      datasets:[
+        { label:'Left arm (°)', data:m.armSwingL.map(p=>Math.round(p.v)), borderColor:'#D4FF3D', tension:0.3, pointRadius:0, borderWidth:2 },
+        { label:'Right arm (°)', data:m.armSwingR.map(p=>Math.round(p.v)), borderColor:'#FF4E32', tension:0.3, pointRadius:0, borderWidth:2 }
+      ]
+    },
+    options: chartOpts('seconds','degrees (+ front / − back)')
+  });
+
+  const leanCtx = document.getElementById('leanChart');
+  leanChartInstance = new Chart(leanCtx, {
+    type:'line',
+    data:{
+      labels: m.leanSeries.map(p=>p.t.toFixed(2)),
+      datasets:[{
+        label:'Forward lean (°)',
+        data: m.leanSeries.map(p=>Math.round(p.v*10)/10),
+        borderColor:'#FF4E32', backgroundColor:'rgba(255,78,50,0.12)',
+        tension:0.3, pointRadius:0, fill:true, borderWidth:2
+      }]
+    },
+    options: chartOpts('seconds','degrees')
+  });
+
+  const kneeCtx = document.getElementById('kneeChart');
+  kneeChartInstance = new Chart(kneeCtx, {
+    type:'line',
+    data:{
+      labels: m.kneeLSeries.map(p=>p.t.toFixed(2)),
+      datasets:[
+        { label:'Left knee (°)', data:m.kneeLSeries.map(p=>Math.round(p.v)), borderColor:'#D4FF3D', tension:0.3, pointRadius:0, borderWidth:2 },
+        { label:'Right knee (°)', data:m.kneeRSeries.map((p,i)=>Math.round(p.v)), borderColor:'#8B8E98', tension:0.3, pointRadius:0, borderWidth:2 }
+      ]
+    },
+    options: chartOpts('seconds','degrees')
+  });
+}
+
+function chartOpts(xlabel, ylabel){
+  return {
+    responsive:true,
+    animation:false,
+    plugins:{ legend:{ labels:{ color:'#C9CAD1', font:{family:'Inter'} } } },
+    scales:{
+      x:{ ticks:{ color:'#8B8E98', maxTicksLimit:8 }, grid:{ color:'#2E313A' }, title:{display:true,text:xlabel,color:'#8B8E98'} },
+      y:{ ticks:{ color:'#8B8E98' }, grid:{ color:'#2E313A' }, title:{display:true,text:ylabel,color:'#8B8E98'} }
+    }
+  };
+}
+</script>
+</body>
+</html>
